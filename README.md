@@ -1,33 +1,103 @@
-# 发票检查器 (Invoice Checker)
+# 📋 发票检查器 (Invoice Checker)
 
 采购发票自动化验证和上传系统
 
-## 功能特性
+[![Demo](https://img.shields.io/badge/Demo-在线演示-blue)](https://fanfanfancheung.github.io/invoice-checker/)
+[![GitHub](https://img.shields.io/badge/GitHub-仓库-black)](https://github.com/fanfanfancheung/invoice-checker)
 
-- 📤 拖拽上传合同和发票
-- 🔍 自动OCR识别关键信息
-- ✅ 智能验证规格型号和金额
-- 🎨 实时状态展示（绿色/黄色标记）
-- 📊 合同发票关联管理
+## 🚀 立即体验
 
-## 技术栈
+**在线Demo（无需安装）：**
 
-- **前端**: Next.js 14 + TypeScript + Tailwind CSS
-- **后端**: Python FastAPI
+👉 **https://fanfanfancheung.github.io/invoice-checker/**
+
+纯前端演示版本，可以体验完整的界面交互！
+
+---
+
+## ✨ 功能特性
+
+- 📤 **拖拽上传** - 支持合同和发票文件上传
+- 🔍 **自动识别** - OCR识别关键信息（采购单号、金额、规格型号）
+- ✅ **智能验证** - 自动核对规格型号和金额
+- 🎨 **实时状态** - 绿色(完成) / 黄色(未完成) 标记
+- 📊 **合同管理** - 按日期排序，展开查看发票明细
+
+---
+
+## 📸 界面预览
+
+```
+┌─────────────────────────────────────────────────┐
+│  📋 发票检查器                                   │
+│                                                 │
+│  [📄 上传合同] [🧾 上传发票]                    │
+│  ┌──────────────────────────────────────────┐  │
+│  │  📁 拖拽文件到这里                        │  │
+│  └──────────────────────────────────────────┘  │
+│                                                 │
+│  合同列表:                                      │
+│  🟢 PO-2024001  2024-01-15  ¥50,000  ✓已齐    │
+│  🟡 PO-2024002  2024-01-16  ¥80,000  欠¥30k   │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 🎯 使用场景
+
+### 工作流程
+
+```
+1️⃣ 上传合同
+   ↓
+2️⃣ 系统识别采购单号、金额等信息
+   ↓
+3️⃣ 上传对应发票
+   ↓
+4️⃣ 自动验证规格型号和金额
+   ↓
+5️⃣ ✅ 通过 → 上传到领星 | ❌ 不通过 → 提示错误
+```
+
+---
+
+## 🏗️ 技术架构
+
+### 前端
+- **框架**: Next.js 14 + TypeScript
+- **样式**: Tailwind CSS
+- **交互**: React Dropzone
+
+### 后端
+- **框架**: FastAPI (Python)
 - **数据库**: SQLite (开发) / PostgreSQL (生产)
 - **OCR**: 腾讯云OCR API
 
-## 快速开始
+---
 
-### 后端
+## 📦 本地开发
+
+### 快速启动
+
 ```bash
+# 克隆仓库
+git clone https://github.com/fanfanfancheung/invoice-checker.git
+cd invoice-checker
+
+# 方式1: 一键启动（推荐）
+chmod +x start-dev.sh
+./start-dev.sh
+
+# 方式2: 手动启动
+# 后端
 cd backend
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload
-```
+uvicorn main:app --reload --port 8000
 
-### 前端
-```bash
+# 前端（新终端）
 cd frontend
 npm install
 npm run dev
@@ -35,12 +105,127 @@ npm run dev
 
 访问: http://localhost:3000
 
-## MVP 功能清单
+---
 
-- [x] 项目初始化
-- [ ] 文件上传接口
-- [ ] OCR识别引擎
-- [ ] 合同数据存储
-- [ ] 发票验证逻辑
-- [ ] 前端拖拽界面
-- [ ] 状态显示系统
+## ☁️ 部署到云端
+
+### 方式1: GitHub Pages (Demo版本) ⭐️
+
+**已自动部署！** 访问: https://fanfanfancheung.github.io/invoice-checker/
+
+纯静态Demo，无需后端，适合演示和测试界面。
+
+### 方式2: Vercel + Railway (完整版)
+
+#### 前端部署 (Vercel - 免费)
+
+1. 访问 [Vercel](https://vercel.com)
+2. 点击 "Import Project"
+3. 连接GitHub仓库: `fanfanfancheung/invoice-checker`
+4. 配置:
+   - Framework: Next.js
+   - Root Directory: `frontend/`
+   - Build Command: `npm run build`
+   - Output Directory: `.next`
+5. 环境变量:
+   ```
+   NEXT_PUBLIC_API_URL=<后端Railway URL>
+   ```
+6. 点击 Deploy
+
+#### 后端部署 (Railway - 免费额度)
+
+1. 访问 [Railway](https://railway.app)
+2. 点击 "New Project" → "Deploy from GitHub repo"
+3. 选择仓库: `fanfanfancheung/invoice-checker`
+4. 配置:
+   - Root Directory: `backend/`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+5. Deploy
+
+复制Railway给你的URL，填入Vercel的环境变量中。
+
+### 方式3: 一键部署脚本
+
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+按提示选择部署方式。
+
+---
+
+## 📚 文档
+
+- [快速开始](QUICKSTART.md) - 3种使用方式对比
+- [使用说明](USAGE.md) - 详细操作指南
+- [部署指南](DEPLOY.md) - 云端部署步骤
+
+---
+
+## ✅ MVP功能清单
+
+**已实现:**
+- ✅ 文件拖拽上传界面
+- ✅ 合同/发票分类上传
+- ✅ 合同列表展示(按日期排序)
+- ✅ 金额验证和状态标记
+- ✅ 发票明细展开查看
+- ✅ 响应式设计(支持移动端)
+
+**待实现(第二阶段):**
+- ⏳ OCR自动识别(目前用mock数据)
+- ⏳ 领星API集成
+- ⏳ 飞书机器人
+- ⏳ 批量上传
+- ⏳ 人工复核界面
+- ⏳ 数据看板
+
+---
+
+## 🔧 开发计划
+
+### v0.1.0 (MVP) - 已完成 ✅
+- 基础界面和交互
+- 合同/发票管理
+- 简单验证逻辑
+
+### v0.2.0 (计划中)
+- 接入腾讯云OCR
+- 规格型号模糊匹配
+- 人工复核界面
+
+### v0.3.0 (计划中)
+- 领星API集成
+- 自动上传功能
+- 飞书机器人
+
+### v1.0.0 (未来)
+- 批量处理
+- 数据看板
+- 导出报表
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## 📞 联系方式
+
+- GitHub: [@fanfanfancheung](https://github.com/fanfanfancheung)
+- Email: [联系邮箱]
+
+---
+
+**⭐️ 如果觉得有用，请给个Star！**
