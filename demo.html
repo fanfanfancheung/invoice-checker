@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发票检查器 - Demo版本</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- 标题 -->
+        <h1 class="text-4xl font-bold text-gray-800 mb-2">📋 发票检查器</h1>
+        <p class="text-gray-600 mb-8">采购发票自动化验证系统 (Demo版本)</p>
+
+        <!-- 上传区域 -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <div class="flex gap-4 mb-4">
+                <button onclick="switchType('contract')" id="btn-contract" class="px-6 py-2 rounded-lg font-semibold bg-blue-500 text-white">
+                    📄 上传合同
+                </button>
+                <button onclick="switchType('invoice')" id="btn-invoice" class="px-6 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300">
+                    🧾 上传发票
+                </button>
+            </div>
+
+            <div id="upload-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-gray-400">
+                <input type="file" id="file-input" accept=".pdf,image/*" class="hidden" onchange="handleFile(event)">
+                <p class="text-gray-600 text-lg mb-2" id="upload-text">📁 将合同拖到这里</p>
+                <p class="text-gray-400 text-sm">或点击选择文件（支持 PDF、图片）</p>
+            </div>
+        </div>
+
+        <!-- 合同列表 -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">合同列表</h2>
+            <div id="contracts-list" class="space-y-3">
+                <!-- 示例数据 -->
+                <div class="border rounded-lg overflow-hidden">
+                    <div class="p-4 bg-green-50 flex items-center justify-between">
+                        <div class="flex items-center gap-4 flex-1">
+                            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                            <div class="font-mono font-bold text-lg">PO-2024001</div>
+                            <div class="text-gray-600">2024-01-15</div>
+                            <div class="text-gray-600">数量: 100</div>
+                            <div class="font-semibold">¥50,000</div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="px-3 py-1 rounded-full text-sm font-semibold bg-green-200 text-green-800">
+                                ✓ 金额一致
+                            </div>
+                            <div class="text-gray-500">2 张发票</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border rounded-lg overflow-hidden">
+                    <div class="p-4 bg-yellow-50 flex items-center justify-between">
+                        <div class="flex items-center gap-4 flex-1">
+                            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div class="font-mono font-bold text-lg">PO-2024002</div>
+                            <div class="text-gray-600">2024-01-16</div>
+                            <div class="text-gray-600">数量: 200</div>
+                            <div class="font-semibold">¥80,000</div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-200 text-yellow-800">
+                                欠 ¥30,000
+                            </div>
+                            <div class="text-gray-500">1 张发票</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提示信息 -->
+        <div id="toast" class="hidden fixed bottom-8 right-8 bg-blue-600 text-white px-6 py-4 rounded-lg shadow-xl">
+            <p id="toast-message"></p>
+        </div>
+    </div>
+
+    <script>
+        let currentType = 'contract';
+        let contracts = [
+            { po: 'PO-2024001', date: '2024-01-15', qty: 100, total: 50000, invoiced: 50000, count: 2 },
+            { po: 'PO-2024002', date: '2024-01-16', qty: 200, total: 80000, invoiced: 50000, count: 1 }
+        ];
+
+        function switchType(type) {
+            currentType = type;
+            const contractBtn = document.getElementById('btn-contract');
+            const invoiceBtn = document.getElementById('btn-invoice');
+            const uploadText = document.getElementById('upload-text');
+
+            if (type === 'contract') {
+                contractBtn.className = 'px-6 py-2 rounded-lg font-semibold bg-blue-500 text-white';
+                invoiceBtn.className = 'px-6 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300';
+                uploadText.textContent = '📁 将合同拖到这里';
+            } else {
+                invoiceBtn.className = 'px-6 py-2 rounded-lg font-semibold bg-green-500 text-white';
+                contractBtn.className = 'px-6 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300';
+                uploadText.textContent = '📁 将发票拖到这里';
+            }
+        }
+
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showToast(`${currentType === 'contract' ? '合同' : '发票'} "${file.name}" 上传成功！`);
+            
+            if (currentType === 'contract') {
+                // 模拟添加新合同
+                contracts.push({
+                    po: `PO-2024${(contracts.length + 1).toString().padStart(3, '0')}`,
+                    date: new Date().toISOString().split('T')[0],
+                    qty: 150,
+                    total: 60000,
+                    invoiced: 0,
+                    count: 0
+                });
+                renderContracts();
+            } else {
+                // 模拟添加发票到第一个合同
+                if (contracts.length > 0) {
+                    contracts[0].invoiced += 20000;
+                    contracts[0].count += 1;
+                    renderContracts();
+                    showToast('发票验证通过并关联到合同！');
+                }
+            }
+        }
+
+        function renderContracts() {
+            const list = document.getElementById('contracts-list');
+            list.innerHTML = contracts.map(c => {
+                const isComplete = Math.abs(c.total - c.invoiced) < 1;
+                const bgColor = isComplete ? 'bg-green-50' : 'bg-yellow-50';
+                const dotColor = isComplete ? 'bg-green-500' : 'bg-yellow-500';
+                const badgeColor = isComplete ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800';
+                const statusText = isComplete ? '✓ 金额一致' : `欠 ¥${(c.total - c.invoiced).toLocaleString()}`;
+
+                return `
+                    <div class="border rounded-lg overflow-hidden">
+                        <div class="p-4 ${bgColor} flex items-center justify-between">
+                            <div class="flex items-center gap-4 flex-1">
+                                <div class="w-3 h-3 rounded-full ${dotColor}"></div>
+                                <div class="font-mono font-bold text-lg">${c.po}</div>
+                                <div class="text-gray-600">${c.date}</div>
+                                <div class="text-gray-600">数量: ${c.qty}</div>
+                                <div class="font-semibold">¥${c.total.toLocaleString()}</div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="px-3 py-1 rounded-full text-sm font-semibold ${badgeColor}">
+                                    ${statusText}
+                                </div>
+                                <div class="text-gray-500">${c.count} 张发票</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            toastMessage.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // 拖拽上传
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('border-blue-500', 'bg-blue-50');
+        });
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('border-blue-500', 'bg-blue-50');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile({ target: { files } });
+            }
+        });
+
+        // 初始渲染
+        renderContracts();
+    </script>
+</body>
+</html>
