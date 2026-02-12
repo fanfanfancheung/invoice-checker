@@ -128,7 +128,7 @@ def get_contract_invoices(contract_id):
     """获取某个合同的所有发票"""
     conn = sqlite3.connect(DB_PATH)
     query = '''
-        SELECT spec_model, quantity, amount, status, created_at, file_name
+        SELECT id, spec_model, quantity, amount, status, created_at, file_name
         FROM invoices 
         WHERE contract_id = ?
         ORDER BY created_at DESC
@@ -149,6 +149,33 @@ def add_contract(po_number, order_date, quantity, total_amount, file_name):
         return True, "合同添加成功！"
     except sqlite3.IntegrityError:
         return False, "采购单号已存在！"
+    finally:
+        conn.close()
+
+def delete_contract(contract_id):
+    """删除合同及其关联发票"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM invoices WHERE contract_id = ?", (contract_id,))
+        c.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
+        conn.commit()
+        return True, "合同已删除！"
+    except Exception as e:
+        return False, f"删除失败: {str(e)}"
+    finally:
+        conn.close()
+
+def delete_invoice(invoice_id):
+    """删除单张发票"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
+        conn.commit()
+        return True, "发票已删除！"
+    except Exception as e:
+        return False, f"删除失败: {str(e)}"
     finally:
         conn.close()
 
@@ -182,6 +209,8 @@ if 'upload_type' not in st.session_state:
     st.session_state.upload_type = 'contract'
 if 'show_details' not in st.session_state:
     st.session_state.show_details = {}
+if 'confirm_delete' not in st.session_state:
+    st.session_state.confirm_delete = {}
 
 # 标题
 st.markdown("# 📋 发票检查器")
@@ -211,34 +240,43 @@ with st.sidebar:
         if uploaded_file:
             st.success(f"已选择: {uploaded_file.name}")
             
+            # 取消上传按钮
+            if st.button("❌ 取消上传", key="cancel_contract_upload"):
+                st.session_state.pop("contract_uploader", None)
+                st.rerun()
+            
             with st.form("contract_form"):
-                st.markdown("##### OCR识别结果")
-                st.caption("(演示版 - 请手动输入)")
+                st.markdown("##### 请填写合同信息")
+                st.caption("⚠️ 请根据合同内容手动填写以下信息")
                 
-                # 自动生成采购单号
-                contracts_df = get_all_contracts()
-                next_po = f"PO-2024{len(contracts_df) + 1:03d}"
-                
-                po_number = st.text_input("采购单号", value=next_po)
-                order_date = st.date_input("订单日期", value=datetime.now())
-                quantity = st.number_input("数量", min_value=1, value=100, step=1)
-                total_amount = st.number_input("总金额(¥)", min_value=0.0, value=50000.0, step=1000.0)
+                po_number = st.text_input("采购单号 *", value="", placeholder="例: PO-20240001")
+                order_date = st.date_input("订单日期 *", value=datetime.now())
+                quantity = st.number_input("数量 *", min_value=0, value=0, step=1, help="请填写合同中的采购数量")
+                total_amount = st.number_input("总金额(¥，小写) *", min_value=0.0, value=0.0, step=100.0, help="请填写合同中的总金额（小写数字）")
                 
                 submitted = st.form_submit_button("✅ 确认添加合同", use_container_width=True)
                 
                 if submitted:
-                    success, message = add_contract(
-                        po_number, 
-                        str(order_date), 
-                        quantity, 
-                        total_amount,
-                        uploaded_file.name
-                    )
-                    if success:
-                        st.success(message)
-                        st.rerun()
+                    # 验证必填项
+                    if not po_number.strip():
+                        st.error("请填写采购单号！")
+                    elif quantity <= 0:
+                        st.error("数量必须大于0！")
+                    elif total_amount <= 0:
+                        st.error("总金额必须大于0！")
                     else:
-                        st.error(message)
+                        success, message = add_contract(
+                            po_number.strip(), 
+                            str(order_date), 
+                            quantity, 
+                            total_amount,
+                            uploaded_file.name
+                        )
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
     
     else:  # 发票
         st.markdown("#### 上传发票")
@@ -251,9 +289,14 @@ with st.sidebar:
         if uploaded_file:
             st.success(f"已选择: {uploaded_file.name}")
             
+            # 取消上传按钮
+            if st.button("❌ 取消上传", key="cancel_invoice_upload"):
+                st.session_state.pop("invoice_uploader", None)
+                st.rerun()
+            
             with st.form("invoice_form"):
-                st.markdown("##### OCR识别结果")
-                st.caption("(演示版 - 请手动输入)")
+                st.markdown("##### 请填写发票信息")
+                st.caption("⚠️ 请根据发票内容手动填写以下信息")
                 
                 contracts_df = get_all_contracts()
                 if len(contracts_df) == 0:
@@ -261,25 +304,30 @@ with st.sidebar:
                 else:
                     contract_options = contracts_df['po_number'].tolist()
                     contract_number = st.selectbox("关联合同号", contract_options)
-                    spec_model = st.text_input("规格型号", value="SKU-A001")
-                    quantity = st.number_input("数量", min_value=1, value=50, step=1)
-                    amount = st.number_input("发票金额(¥)", min_value=0.0, value=25000.0, step=1000.0)
+                    spec_model = st.text_input("规格型号", value="", placeholder="例: SKU-A001")
+                    quantity = st.number_input("数量", min_value=0, value=0, step=1)
+                    amount = st.number_input("发票金额(¥)", min_value=0.0, value=0.0, step=100.0)
                     
                     submitted = st.form_submit_button("✅ 确认添加发票", use_container_width=True)
                     
                     if submitted:
-                        success, message = add_invoice(
-                            contract_number,
-                            spec_model,
-                            quantity,
-                            amount,
-                            uploaded_file.name
-                        )
-                        if success:
-                            st.success(message)
-                            st.rerun()
+                        if quantity <= 0:
+                            st.error("数量必须大于0！")
+                        elif amount <= 0:
+                            st.error("金额必须大于0！")
                         else:
-                            st.error(message)
+                            success, message = add_invoice(
+                                contract_number,
+                                spec_model,
+                                quantity,
+                                amount,
+                                uploaded_file.name
+                            )
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
     
     st.markdown("---")
     st.markdown("### 📊 统计")
@@ -326,12 +374,11 @@ else:
     # 显示合同卡片
     for _, row in filtered_df.iterrows():
         is_complete = abs(row['total_amount'] - row['invoiced_amount']) < 0.01
-        card_class = "contract-complete" if is_complete else "contract-incomplete"
         status_emoji = "🟢" if is_complete else "🟡"
         status_text = "✓ 金额一致" if is_complete else f"欠 ¥{row['total_amount'] - row['invoiced_amount']:,.2f}"
         
         with st.container():
-            col1, col2, col3, col4, col5, col6 = st.columns([0.3, 1.5, 1, 1, 1.5, 1.2])
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([0.3, 1.5, 1, 1, 1.5, 1.2, 0.5])
             
             with col1:
                 st.markdown(f"<h2 style='margin:0;'>{status_emoji}</h2>", unsafe_allow_html=True)
@@ -348,6 +395,29 @@ else:
                     st.success(status_text)
                 else:
                     st.warning(status_text)
+            with col7:
+                # 删除按钮
+                delete_key = f"del_{row['id']}"
+                if st.button("🗑️", key=delete_key, help="删除此合同"):
+                    st.session_state.confirm_delete[row['id']] = True
+            
+            # 删除确认
+            if st.session_state.confirm_delete.get(row['id'], False):
+                confirm_col1, confirm_col2, confirm_col3 = st.columns([4, 1, 1])
+                with confirm_col1:
+                    st.warning(f"⚠️ 确定要删除合同 **{row['po_number']}** 及其所有关联发票吗？")
+                with confirm_col2:
+                    if st.button("✅ 确认删除", key=f"confirm_del_{row['id']}", type="primary"):
+                        success, message = delete_contract(row['id'])
+                        if success:
+                            st.session_state.confirm_delete.pop(row['id'], None)
+                            st.rerun()
+                        else:
+                            st.error(message)
+                with confirm_col3:
+                    if st.button("❌ 取消", key=f"cancel_del_{row['id']}"):
+                        st.session_state.confirm_delete.pop(row['id'], None)
+                        st.rerun()
             
             # 发票明细展开
             if st.button(f"📋 查看发票明细 ({int(row['invoice_count'])}张)", key=f"btn_{row['id']}", use_container_width=True):
@@ -358,7 +428,7 @@ else:
                 if len(invoices_df) > 0:
                     st.markdown("##### 发票明细")
                     for idx, inv in invoices_df.iterrows():
-                        inv_col1, inv_col2, inv_col3, inv_col4, inv_col5 = st.columns([2, 1, 1, 1, 1])
+                        inv_col1, inv_col2, inv_col3, inv_col4, inv_col5, inv_col6 = st.columns([2, 1, 1, 1, 1, 0.5])
                         with inv_col1:
                             st.text(f"规格: {inv['spec_model']}")
                         with inv_col2:
@@ -369,6 +439,13 @@ else:
                             st.text(inv['created_at'][:10])
                         with inv_col5:
                             st.success("✓ 已验证")
+                        with inv_col6:
+                            if st.button("🗑️", key=f"del_inv_{inv['id']}", help="删除此发票"):
+                                success, msg = delete_invoice(inv['id'])
+                                if success:
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
                 else:
                     st.info("暂无发票")
             
@@ -378,7 +455,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #6B7280; padding: 1rem;'>
-    <p>💪 发票检查器 v0.1.0 | Streamlit版本</p>
+    <p>💪 发票检查器 v0.2.0 | Streamlit版本</p>
     <p><a href="https://github.com/fanfanfancheung/invoice-checker" target="_blank">GitHub</a> | 
        <a href="https://github.com/fanfanfancheung/invoice-checker/blob/master/USAGE.md" target="_blank">使用文档</a></p>
 </div>
