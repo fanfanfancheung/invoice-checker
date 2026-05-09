@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fanfan.invoice-downloader</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/fanfan/PycharmProjects/invoice-checker/run_downloader.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/fanfan/PycharmProjects/invoice-checker</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>12</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 电脑关机期间错过的任务，开机后立即补跑一次 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/fanfan/PycharmProjects/invoice-checker/logs/invoice-downloader.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/fanfan/PycharmProjects/invoice-checker/logs/invoice-downloader-error.log</string>
+</dict>
+</plist>
