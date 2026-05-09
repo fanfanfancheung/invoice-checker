@@ -10,21 +10,21 @@ from . import feishu_client as fc
 from . import invoice_parser as parser
 
 
-_RECORD_FILE = ".downloaded.json"
+_STATE_FILE = ".state.json"
 
 
-def _load_downloaded(output_dir: str) -> set[str]:
-    path = os.path.join(output_dir, _RECORD_FILE)
+def _load_state(output_dir: str) -> dict:
+    path = os.path.join(output_dir, _STATE_FILE)
     if os.path.exists(path):
         with open(path) as f:
-            return set(json.load(f))
-    return set()
+            return json.load(f)
+    return {"downloaded": [], "last_run_ms": None}
 
 
-def _save_downloaded(output_dir: str, ids: set[str]) -> None:
-    path = os.path.join(output_dir, _RECORD_FILE)
+def _save_state(output_dir: str, state: dict) -> None:
+    path = os.path.join(output_dir, _STATE_FILE)
     with open(path, "w") as f:
-        json.dump(sorted(ids), f, indent=2)
+        json.dump(state, f, indent=2, ensure_ascii=False)
 
 
 def _unique_path(directory: str, filename: str) -> str:
@@ -64,20 +64,34 @@ def _process_pdf(pdf_path: str, subject: str, received_ts: int | None, output_di
     return dest
 
 
-def run(output_dir: str | None = None, days_back: int | None = None) -> None:
+def run(output_dir: str | None = None, since_ms: int | None = None) -> None:
+    """
+    Run one download pass.
+
+    since_ms: only process emails received after this Unix-ms timestamp.
+              If None, falls back to state file, then to config.DAYS_BACK.
+    """
     output_dir = output_dir or config.DOWNLOAD_DIR
-    days_back = days_back if days_back is not None else config.DAYS_BACK
     os.makedirs(output_dir, exist_ok=True)
 
-    downloaded = _load_downloaded(output_dir)
+    state = _load_state(output_dir)
+    downloaded: set[str] = set(state.get("downloaded", []))
 
-    print(f"正在搜索「发票」相关邮件（最近 {days_back} 天）…")
+    # Determine cutoff timestamp
+    if since_ms is not None:
+        cutoff_ms = since_ms
+        label = datetime.fromtimestamp(cutoff_ms / 1000).strftime("%Y-%m-%d %H:%M")
+    elif state.get("last_run_ms"):
+        cutoff_ms = state["last_run_ms"]
+        label = datetime.fromtimestamp(cutoff_ms / 1000).strftime("%Y-%m-%d %H:%M")
+    else:
+        cutoff_ms = int((datetime.now() - timedelta(days=config.DAYS_BACK)).timestamp() * 1000)
+        label = f"最近 {config.DAYS_BACK} 天"
+
+    run_start_ms = int(datetime.now().timestamp() * 1000)
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始扫描，搜索范围：{label} 至今")
+
     messages = fc.search_invoice_messages()
-
-    cutoff_ms = 0
-    if days_back > 0:
-        cutoff_ms = int((datetime.now() - timedelta(days=days_back)).timestamp() * 1000)
-
     new_count = 0
 
     for meta in messages:
@@ -87,16 +101,11 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
         detail = fc.get_message_detail(msg_id)
         received_ts = detail.get("received_time")
 
-        if cutoff_ms and received_ts and int(received_ts) < cutoff_ms:
+        if received_ts and int(received_ts) < cutoff_ms:
             continue
 
-        attachments = detail["attachments"]
-        if not attachments:
-            continue
-
-        # Filter to supported file types
         valid_atts = [
-            a for a in attachments
+            a for a in detail["attachments"]
             if a["name"].lower().endswith((".pdf", ".zip", ".ofd"))
         ]
         if not valid_atts:
@@ -120,10 +129,7 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
                 raw_path = os.path.join(tmp, att_name)
                 _download_file(url, raw_path)
 
-                if att_name.lower().endswith(".zip"):
-                    pdf_files = parser.extract_zip_pdfs(raw_path, tmp)
-                else:
-                    pdf_files = [raw_path]
+                pdf_files = parser.extract_zip_pdfs(raw_path, tmp) if att_name.lower().endswith(".zip") else [raw_path]
 
                 for pdf in pdf_files:
                     dest = _process_pdf(pdf, subject, received_ts, output_dir)
@@ -131,9 +137,16 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
                     new_count += 1
 
             downloaded.add(record_key)
-            _save_downloaded(output_dir, downloaded)
+            # Save state after each attachment so progress isn't lost on crash
+            state["downloaded"] = sorted(downloaded)
+            state["last_run_ms"] = run_start_ms
+            _save_state(output_dir, state)
+
+    # Always update last_run_ms even when nothing new was found
+    state["last_run_ms"] = run_start_ms
+    _save_state(output_dir, state)
 
     if new_count == 0:
-        print("没有发现新的发票附件。")
+        print("  没有发现新的发票附件。")
     else:
-        print(f"\n共下载 {new_count} 个发票文件，保存至: {os.path.abspath(output_dir)}")
+        print(f"  共下载 {new_count} 个文件，保存至: {os.path.abspath(output_dir)}")
