@@ -2,6 +2,7 @@
 import json
 import os
 import tempfile
+import requests
 from datetime import datetime, timedelta
 
 from . import config
@@ -27,7 +28,6 @@ def _save_downloaded(output_dir: str, ids: set[str]) -> None:
 
 
 def _unique_path(directory: str, filename: str) -> str:
-    """Avoid name collisions by appending _1, _2 …"""
     base, ext = os.path.splitext(filename)
     candidate = os.path.join(directory, filename)
     idx = 1
@@ -37,14 +37,22 @@ def _unique_path(directory: str, filename: str) -> str:
     return candidate
 
 
+def _download_file(url: str, dest_path: str) -> None:
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    with requests.get(url, stream=True, timeout=60) as r:
+        r.raise_for_status()
+        with open(dest_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+
 def _process_pdf(pdf_path: str, subject: str, received_ts: int | None, output_dir: str) -> str:
-    """Parse a single PDF, build the target filename, and move it into output_dir."""
     text = parser.pdf_text(pdf_path)
     combined = subject + "\n" + text
 
     date = parser.extract_date(combined)
     if not date and received_ts:
-        date = datetime.fromtimestamp(received_ts / 1000).strftime("%Y%m%d")
+        date = datetime.fromtimestamp(int(received_ts) / 1000).strftime("%Y%m%d")
 
     amount = parser.extract_amount(text) or parser.extract_amount_from_subject(subject)
     category = parser.extract_category(combined)
@@ -52,7 +60,6 @@ def _process_pdf(pdf_path: str, subject: str, received_ts: int | None, output_di
     original = os.path.basename(pdf_path)
     filename = parser.build_filename(date, category, amount, original)
     dest = _unique_path(output_dir, filename)
-
     os.rename(pdf_path, dest)
     return dest
 
@@ -63,16 +70,13 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     downloaded = _load_downloaded(output_dir)
-    client = fc.build_client()
 
     print(f"正在搜索「发票」相关邮件（最近 {days_back} 天）…")
-    messages = fc.list_invoice_messages(client)
+    messages = fc.search_invoice_messages()
 
-    # Filter by date if days_back > 0
+    cutoff_ms = 0
     if days_back > 0:
         cutoff_ms = int((datetime.now() - timedelta(days=days_back)).timestamp() * 1000)
-    else:
-        cutoff_ms = 0
 
     new_count = 0
 
@@ -80,7 +84,7 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
         msg_id = meta["message_id"]
         subject = meta["subject"]
 
-        detail = fc.get_message_detail(client, msg_id)
+        detail = fc.get_message_detail(msg_id)
         received_ts = detail.get("received_time")
 
         if cutoff_ms and received_ts and int(received_ts) < cutoff_ms:
@@ -88,10 +92,17 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
 
         attachments = detail["attachments"]
         if not attachments:
-            print(f"  跳过（无附件）: {subject}")
             continue
 
-        for att in attachments:
+        # Filter to supported file types
+        valid_atts = [
+            a for a in attachments
+            if a["name"].lower().endswith((".pdf", ".zip", ".ofd"))
+        ]
+        if not valid_atts:
+            continue
+
+        for att in valid_atts:
             att_id = att["attachment_id"]
             att_name: str = att["name"]
             record_key = f"{msg_id}:{att_id}"
@@ -99,19 +110,15 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
             if record_key in downloaded:
                 continue
 
-            if not att_name.lower().endswith((".pdf", ".zip", ".ofd")):
-                continue
-
-            # Get download URL
-            url_map = fc.get_attachment_download_urls(client, msg_id, [att_id])
+            url_map = fc.get_attachment_download_urls(msg_id, [att_id])
             url = url_map.get(att_id)
             if not url:
-                print(f"  ⚠ 无法获取下载链接: {att_name}")
+                print(f"  [跳过] 无法获取下载链接: {att_name}")
                 continue
 
             with tempfile.TemporaryDirectory() as tmp:
                 raw_path = os.path.join(tmp, att_name)
-                fc.download_file(url, raw_path)
+                _download_file(url, raw_path)
 
                 if att_name.lower().endswith(".zip"):
                     pdf_files = parser.extract_zip_pdfs(raw_path, tmp)
@@ -120,7 +127,7 @@ def run(output_dir: str | None = None, days_back: int | None = None) -> None:
 
                 for pdf in pdf_files:
                     dest = _process_pdf(pdf, subject, received_ts, output_dir)
-                    print(f"  ✓ 已保存: {os.path.basename(dest)}")
+                    print(f"  [保存] {os.path.basename(dest)}")
                     new_count += 1
 
             downloaded.add(record_key)
